@@ -1,0 +1,43 @@
+[package]
+name = "loginhuset"
+version = "0.1.0"
+authors = ["michael <michael@f3k.org>"]
+
+[dependencies]
+chrono = "0.4"
+futures = "0.1.14"
+getopts = "0.2.15"
+hyper = "0.11.2"
+hyper-staticfile = "0.1.1"
+hyper-tls = "0.1.2"
+log = "0.3"
+rand = "0.3"
+serde = "1.0"
+serde_derive = "1.0.0"
+serde_urlencoded = "0.5.0"
+simplelog = "0.4.2"
+tokio-core = "0.1"
+url = "1.5.1"
+dotenv = "0.9.0"
+lazy_static = "0.2"
+
+[dependencies.diesel]
+default-features = false
+features = ["sqlite", "chrono"]
+version = "0.16"
+
+[dependencies.diesel_codegen]
+default-features = false
+features = ["sqlite", "dotenv"]
+version = "0.16"
+
+[dependencies.multipart]
+path = "libs/multipart"
+
+[dependencies.rusqlite]
+version = "0.11.0"
+
+[build-dependencies.diesel]
+default-features = false
+features = ["sqlite", "chrono"]
+version = "0.16.0"

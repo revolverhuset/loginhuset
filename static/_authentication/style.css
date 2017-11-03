@@ -1,0 +1,48 @@
+* {
+    color: #f1f1f1;
+}
+
+html, body {
+    font-family: 'Roboto Condensed', sans-serif;
+    margin:0;
+    padding:0;
+    height:100%;
+    /*background: no-repeat center/100% url('desert_tiny.jpg') rgb(0, 60, 107);*/
+    background: url('desert_tiny.jpg') no-repeat center center fixed;
+    background-size: cover;
+    overflow: hidden;
+    color: #f1f1f1;
+}
+
+div {
+    height:80%;
+    display:flex;
+    align-items:center;
+    justify-content: center;
+}
+
+form fieldset {
+    border:none;
+}
+
+form fieldset legend {
+    font-size:2em;
+}
+
+form fieldset input {
+    background-color:transparent;
+    outline:none;
+    border:1px solid #fff;
+    line-height: 24px;
+    padding:8px;
+    width:200px;
+    font-size:16px;
+}
+
+footer a {
+    position: absolute;
+    bottom:4px;
+    right:4px;
+    font-size:8px;
+    text-decoration:none;
+}
