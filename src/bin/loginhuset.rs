@@ -58,9 +58,9 @@ struct SimpleServer {
 }
 
 impl SimpleServer {
-    fn new(handle: &Handle, key: Rc<String>, db_connection: Rc<SqliteConnection>) -> SimpleServer {
+    fn new(handle: &Handle, key: Rc<String>, base_path: &str, db_connection: Rc<SqliteConnection>) -> SimpleServer {
         SimpleServer {
-            static_: Static::new(handle, Path::new("/home/michael/dev/loginhuset/static/")),
+            static_: Static::new(handle, Path::new(base_path)),
             client: Rc::new(
                 ::hyper::Client::configure()
                     .connector(HttpsConnector::new(4, handle).unwrap())
@@ -338,6 +338,7 @@ fn args() -> getopts::Matches {
     opts.optflag("h", "help", "Print usage");
     opts.optopt("p", "port", "Bind server to port", "PORT");
     opts.reqopt("m", "mailgun-key", "Mailgun API key", "KEY");
+    opts.reqopt("s", "static", "Path to static content", "DIR");
     opts.optopt("l", "log-level", "Log level", "LEVEL");
 
     let matches = match opts.parse(&args[1..]) {
@@ -372,6 +373,11 @@ fn main() {
     let addr = format!("127.0.0.1:{}", port).parse().unwrap();
     let key = Rc::new(matches.opt_str("m").unwrap());
     let db_conn = Rc::new(establish_connection());
+    let base_path = matches.opt_str("s").unwrap();
+
+    if !Path::new(&base_path).is_dir() {
+        panic!("Static content path does not exist.");
+    }
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
@@ -379,7 +385,7 @@ fn main() {
     let listener = TcpListener::bind(&addr, &handle).unwrap();
     let http = Http::new();
     let server = listener.incoming().for_each(|(sock, addr)| {
-        let s = SimpleServer::new(&handle, Rc::clone(&key), Rc::clone(&db_conn));
+        let s = SimpleServer::new(&handle, Rc::clone(&key), &base_path, Rc::clone(&db_conn));
         http.bind_connection(&handle, sock, addr, s);
         Ok(())
     });
