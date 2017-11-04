@@ -296,6 +296,7 @@ impl Service for SimpleServer {
                 let mut response = Response::new();
                 match cookie {
                     Some((_, user)) => {
+                        response.headers_mut().set_raw("x-identity", user.name);
                         response.headers_mut().set_raw("x-user", user.email);
                         response.set_status(StatusCode::Ok);
                     }
