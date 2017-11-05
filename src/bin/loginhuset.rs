@@ -41,8 +41,6 @@ use std::time::Duration;
 use std::sync::Mutex;
 use std::fs::File;
 
-//static MAIL_TEMPLATE: &'static str = include_str!("../../static/template.html");
-
 lazy_static! {
     static ref TOKENS: Mutex<std::collections::HashMap<String, User>> = {
         let m = std::collections::HashMap::new();
@@ -279,7 +277,6 @@ fn handle_validate(
             let token = rand_string();
             create_session(db_conn, &user, &token);
 
-            // Set cookie header
             response.headers_mut().set(SetCookie(vec![
                 format!(
                     "revolverhuset={}; Path=/; Max-Age=31536000",
