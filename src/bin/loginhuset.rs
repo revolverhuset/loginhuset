@@ -18,6 +18,7 @@ extern crate loginhuset;
 extern crate lazy_static;
 extern crate rand;
 extern crate url;
+extern crate toml;
 
 use loginhuset::*;
 use loginhuset::models::*;
@@ -31,16 +32,16 @@ use hyper_tls::HttpsConnector;
 use hyper::{Method, StatusCode};
 use hyper::header::{ContentLength, Authorization, Basic, Cookie, SetCookie, Location};
 use hyper_staticfile::Static;
-use simplelog::{Config, TermLogger};
-use std::env;
+use simplelog::{TermLogger};
 use std::path::Path;
 use tokio_core::reactor::{Core, Handle, Timeout};
 use tokio_core::net::TcpListener;
 use std::rc::Rc;
 use std::time::Duration;
 use std::sync::Mutex;
+use std::fs::File;
 
-static MAIL_TEMPLATE: &'static str = include_str!("../../static/template.html");
+//static MAIL_TEMPLATE: &'static str = include_str!("../../static/template.html");
 
 lazy_static! {
     static ref TOKENS: Mutex<std::collections::HashMap<String, User>> = {
@@ -49,16 +50,38 @@ lazy_static! {
     };
 }
 
+#[derive(Deserialize)]
+struct Config {
+    database: String,
+    port: Option<u16>,
+    www_root: String,
+    mailgun: Mailgun,
+}
+
+#[derive(Deserialize)]
+struct Mailgun {
+    api_key: String,
+    from: String,
+    subject: String,
+    html_template: String,
+    text_template: String,
+}
+
 struct SimpleServer {
     static_: Static,
     client: Rc<Client<HttpsConnector<hyper::client::HttpConnector>>>,
     handle: Handle,
-    key: Rc<String>,
+    mailgun: Rc<Mailgun>,
     db_connection: Rc<SqliteConnection>,
 }
 
 impl SimpleServer {
-    fn new(handle: &Handle, key: Rc<String>, base_path: &str, db_connection: Rc<SqliteConnection>) -> SimpleServer {
+    fn new(
+        handle: &Handle,
+        base_path: &str,
+        mailgun: Rc<Mailgun>,
+        db: Rc<SqliteConnection>
+    ) -> SimpleServer {
         SimpleServer {
             static_: Static::new(handle, Path::new(base_path)),
             client: Rc::new(
@@ -66,9 +89,9 @@ impl SimpleServer {
                     .connector(HttpsConnector::new(4, handle).unwrap())
                     .build(handle),
             ),
-            key: key,
+            mailgun: mailgun,
             handle: handle.clone(),
-            db_connection: db_connection,
+            db_connection: db,
         }
     }
 }
@@ -78,19 +101,33 @@ fn rand_string() -> String {
     rand::thread_rng().gen_ascii_chars().take(32).collect()
 }
 
-fn multipart(email: &str, url: &str) -> (String, Vec<u8>) {
+fn render(template: &str, url: &str) -> String {
+    let data = {
+        use std::io::Read;
+        let mut s = String::new();
+        let f = File::open(template);
+        if f.is_err() {
+            panic!("Failed to load template '{}'", template);
+        }
+        let mut f = f.unwrap();
+        f.read_to_string(&mut s).unwrap();
+        s
+    };
+    data.replace("{{url}}", url)
+}
+
+fn multipart(config: &Mailgun, email: &str, url: &str) -> (String, Vec<u8>) {
     let mut mp = multipart::MultiPart::new();
-    let data = str::replace(MAIL_TEMPLATE, "{{{url}}}", url);
-    mp.str_part("from", None, "Revolverhuset <mailgun@revolverhuset.no>");
+    mp.str_part("from", None, &config.from);
     mp.str_part("to", None, email);
-    mp.str_part("subject", None, "[auth] revolverhuset");
-    mp.str_part("text", None, "Hello, world!");
-    mp.part("html", None, data.as_bytes().to_vec());
+    mp.str_part("subject", None, &config.subject);
+    mp.str_part("text", None, &render(&config.text_template, url));
+    mp.str_part("html", None, &render(&config.html_template, url));
     (mp.to_content_type(), mp.to_raw())
 }
 
-fn mailgun_request(email: &str, key: Rc<String>, url: &str) -> hyper::Request {
-    let (content_type, data) = multipart(email, url);
+fn mailgun_request(email: &str, config: Rc<Mailgun>, url: &str) -> hyper::Request {
+    let (content_type, data) = multipart(&*config, email, url);
     let uri = "https://api.mailgun.net/v3/mg.revolverhuset.no/messages"
         .parse()
         .unwrap();
@@ -98,7 +135,7 @@ fn mailgun_request(email: &str, key: Rc<String>, url: &str) -> hyper::Request {
     req.headers_mut().set(ContentLength(data.len() as u64));
     req.headers_mut().set(Authorization(Basic {
         username: "api".to_owned(),
-        password: Some((*Rc::try_unwrap(key).unwrap_err()).clone()),
+        password: Some(config.api_key.clone()),
     }));
     req.headers_mut().set_raw("content-type", content_type);
     req.set_body(data);
@@ -155,7 +192,7 @@ fn send_authentication_email(
 fn handle_authenticate(
     req: Request,
     handle: Handle,
-    key: Rc<String>,
+    mailgun: Rc<Mailgun>,
     db_conn: Rc<SqliteConnection>,
     client: Rc<Client<HttpsConnector<hyper::client::HttpConnector>>>,
 ) -> Box<Future<Item = hyper::Response, Error = hyper::Error>> {
@@ -186,7 +223,7 @@ fn handle_authenticate(
                     token,
                     origin
                 );
-                let req = mailgun_request(&user.email, key, &url);
+                let req = mailgun_request(&user.email, mailgun, &url);
                 TOKENS.lock().unwrap().insert(token.clone(), user);
 
                 create_timer_token(token, &handle);
@@ -310,7 +347,7 @@ impl Service for SimpleServer {
                 handle_authenticate(
                     req,
                     self.handle.clone(),
-                    Rc::clone(&self.key),
+                    Rc::clone(&self.mailgun),
                     Rc::clone(&self.db_connection),
                     Rc::clone(&self.client),
                 )
@@ -333,20 +370,20 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn args() -> getopts::Matches {
-    let args: Vec<String> = env::args().collect();
+    use std::env::args;
+
+    let args: Vec<String> = args().collect();
     let program = args[0].clone();
     let mut opts = Options::new();
     opts.optflag("h", "help", "Print usage");
-    opts.optopt("p", "port", "Bind server to port", "PORT");
-    opts.reqopt("m", "mailgun-key", "Mailgun API key", "KEY");
-    opts.reqopt("s", "static", "Path to static content", "DIR");
     opts.optopt("l", "log-level", "Log level", "LEVEL");
+    opts.reqopt("c", "config", "Configuration file", "TOML");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
         Err(f) => {
             print_usage(&program, opts);
-            panic!(f.to_string())
+            panic!(f.to_string());
         }
     };
 
@@ -358,6 +395,21 @@ fn args() -> getopts::Matches {
     matches
 }
 
+fn load_config(path: &str) -> Config {
+    let data = {
+        use std::io::Read;
+        let mut s = String::new();
+        let f = File::open(path);
+        if f.is_err() {
+            panic!("Failed to read config '{}'", path);
+        }
+        let mut f = f.unwrap();
+        f.read_to_string(&mut s).unwrap();
+        s
+    };
+    toml::from_str(&data[..]).unwrap()
+}
+
 fn main() {
     let matches = args();
 
@@ -367,36 +419,43 @@ fn main() {
             .unwrap_or("info".to_owned())
             .parse()
             .unwrap(),
-        Config::default(),
+        simplelog::Config::default(),
     ).unwrap();
 
-    let port = matches.opt_str("p").unwrap_or("3001".to_owned());
-    let addr = format!("127.0.0.1:{}", port).parse().unwrap();
-    let key = Rc::new(matches.opt_str("m").unwrap());
-    let db_conn = Rc::new(establish_connection());
-    let base_path = matches.opt_str("s").unwrap();
+    let config = load_config(&matches.opt_str("c").unwrap());
+    if !Path::new(&config.mailgun.html_template).is_file() {
+        panic!("Html template does not exist.");
+    }
 
-    if !Path::new(&base_path).is_dir() {
+    if !Path::new(&config.mailgun.text_template).is_file() {
+        panic!("Text template does not exist.");
+    }
+
+    if !Path::new(&config.www_root).is_dir() {
         panic!("Static content path does not exist.");
     }
+
+    let addr = format!("127.0.0.1:{}", config.port.unwrap_or(3000)).parse().unwrap();
+    let db_conn = Rc::new(establish_connection(&config.database));
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
 
     let listener = TcpListener::bind(&addr, &handle).unwrap();
     let http = Http::new();
+    let www_root = &config.www_root;
+    let rc_mg = Rc::new(config.mailgun);
+
     let server = listener.incoming().for_each(|(sock, addr)| {
-        let s = SimpleServer::new(&handle, Rc::clone(&key), &base_path, Rc::clone(&db_conn));
+        let s = SimpleServer::new(
+            &handle,
+            &www_root,
+            Rc::clone(&rc_mg),
+            Rc::clone(&db_conn));
         http.bind_connection(&handle, sock, addr, s);
         Ok(())
     });
 
     info!("Listening on {}", addr);
-    match core.run(server) {
-        Ok(()) => (),
-        Err(err) => {
-            error!("{:#?}", err);
-            std::process::exit(1)
-        }
-    }
+    core.run(server).unwrap()
 }

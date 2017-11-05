@@ -1,6 +1,5 @@
 extern crate chrono;
 #[macro_use] extern crate diesel;
-extern crate dotenv;
 #[macro_use] extern crate diesel_codegen;
 
 use self::models::{NewUser, NewSession, User};
@@ -10,9 +9,6 @@ pub mod models;
 
 use diesel::sqlite::SqliteConnection;
 use diesel::prelude::*;
-use dotenv::dotenv;
-use std::env;
-
 
 pub fn create_session<'a>(conn: &SqliteConnection, user: &'a User, token: &'a str) -> usize {
     use schema::sessions;
@@ -40,11 +36,7 @@ pub fn create_user<'a>(conn: &SqliteConnection, email: &'a str, name: &'a str) -
         .expect("Error saving new user")
 }
 
-pub fn establish_connection() -> SqliteConnection {
-    dotenv().ok();
-
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
-    SqliteConnection::establish(&database_url)
-        .expect(&format!("Error connecting to {}", database_url))
+pub fn establish_connection(db: &str) -> SqliteConnection {
+    SqliteConnection::establish(db)
+        .expect(&format!("Error connecting to {}", db))
 }

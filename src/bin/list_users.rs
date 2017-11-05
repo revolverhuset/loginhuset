@@ -1,13 +1,20 @@
 extern crate loginhuset;
 extern crate diesel;
+extern crate dotenv;
 
 use loginhuset::*;
 use loginhuset::models::*;
 use ::loginhuset::schema::users::dsl::*;
 use diesel::prelude::*;
+use dotenv::dotenv;
+use std::env;
 
 fn main() {
-    let connection = establish_connection();
+    dotenv().ok();
+
+    let database_url = env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
+    let connection = establish_connection(&database_url);
 
     let results = users
         .load::<User>(&connection)
