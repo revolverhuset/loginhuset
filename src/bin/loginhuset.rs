@@ -95,8 +95,10 @@ impl SimpleServer {
 }
 
 fn rand_string() -> String {
-    use rand::Rng;
-    rand::thread_rng().gen_ascii_chars().take(32).collect()
+    use rand::{OsRng, Rng};
+    let mut gen = OsRng::new().ok().expect("Failed to get OS random generator");
+
+    gen.gen_ascii_chars().take(32).collect()
 }
 
 fn render(template: &str, url: &str) -> String {
