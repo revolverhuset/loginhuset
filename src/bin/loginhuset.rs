@@ -67,6 +67,7 @@ struct Mailgun {
 }
 
 header! { (XLimitExcept, "X-Limit-Except") => (hyper::Method)* }
+header! { (XRequestMethod, "X-Request-Method") => [hyper::Method] }
 
 struct SimpleServer {
     static_: Static,
@@ -331,10 +332,14 @@ impl Service for SimpleServer {
         info!("Request [{}] {} {}", req.method(), req.path(), req.query().unwrap_or("<>"));
         let cookie = check_cookie(&req.headers().get::<Cookie>(), &*self.db_connection);
 
-        let method_to_check = hyper::Method::Get; // TODO Hardcoded, should reflect original HTTP request
-        let is_whitelisted = req.headers().get::<XLimitExcept>()
-            .and_then(|x| Some(x.contains(&method_to_check)))
-            .unwrap_or(false);
+        let is_whitelisted = match (
+            req.headers().get::<XLimitExcept>(),
+            req.headers().get::<XRequestMethod>()
+        ) {
+            (Some(limit_except), Some(request_method)) =>
+                limit_except.contains(&request_method),
+            _ => false
+        };
 
         match (req.method(), req.path()) {
             (&Method::Get, "/_authentication/check") => {
