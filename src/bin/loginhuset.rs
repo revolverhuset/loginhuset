@@ -1,5 +1,6 @@
 extern crate futures;
 extern crate getopts;
+#[macro_use]
 extern crate hyper;
 extern crate hyper_staticfile;
 extern crate hyper_tls;
@@ -64,6 +65,8 @@ struct Mailgun {
     html_template: String,
     text_template: String,
 }
+
+header! { (XLimitExcept, "X-Limit-Except") => (hyper::Method)* }
 
 struct SimpleServer {
     static_: Static,
@@ -327,16 +330,25 @@ impl Service for SimpleServer {
     fn call(&self, req: Request) -> Self::Future {
         info!("Request [{}] {} {}", req.method(), req.path(), req.query().unwrap_or("<>"));
         let cookie = check_cookie(&req.headers().get::<Cookie>(), &*self.db_connection);
+
+        let method_to_check = hyper::Method::Get; // TODO Hardcoded, should reflect original HTTP request
+        let is_whitelisted = req.headers().get::<XLimitExcept>()
+            .and_then(|x| Some(x.contains(&method_to_check)))
+            .unwrap_or(false);
+
         match (req.method(), req.path()) {
             (&Method::Get, "/_authentication/check") => {
                 let mut response = Response::new();
-                match cookie {
-                    Some((_, user)) => {
+                match (cookie, is_whitelisted) {
+                    (Some((_, user)), _) => {
                         response.headers_mut().set_raw("x-identity", user.name);
                         response.headers_mut().set_raw("x-user", user.email);
                         response.set_status(StatusCode::Ok);
                     }
-                    None => {
+                    (_, true) => {
+                        response.set_status(StatusCode::Ok);
+                    }
+                    (None, _) => {
                         response.set_status(StatusCode::Unauthorized);
                     }
                 }
