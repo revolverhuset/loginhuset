@@ -148,7 +148,7 @@ fn mailgun_request(email: &str, config: Rc<Mailgun>, url: &str) -> hyper::Reques
 
 fn get_user(user_email: &str, db_conn: &SqliteConnection) -> Option<User> {
     use ::loginhuset::schema::users::dsl::*;
-    users.filter(email.eq(user_email))
+    users.filter(email.to_lowercase().eq(user_email.to_lowercase()))
         .first::<User>(&*db_conn)
         .optional()
         .expect("Failed to find users table")
