@@ -1,8 +1,8 @@
+use super::schema::{sessions, users};
 use chrono;
-use super::schema::{users, sessions};
 
 #[derive(Insertable)]
-#[table_name="users"]
+#[table_name = "users"]
 pub struct NewUser<'a> {
     pub email: &'a str,
     pub name: &'a str,
@@ -16,7 +16,7 @@ pub struct User {
 }
 
 #[derive(Insertable)]
-#[table_name="sessions"]
+#[table_name = "sessions"]
 pub struct NewSession<'a> {
     pub user_id: i32,
     pub token: &'a str,

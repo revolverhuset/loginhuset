@@ -1,13 +1,14 @@
 extern crate chrono;
-#[macro_use] extern crate diesel;
+#[macro_use]
+extern crate diesel;
 
-use self::models::{NewUser, NewSession, User};
+use self::models::{NewSession, NewUser, User};
 
-pub mod schema;
 pub mod models;
+pub mod schema;
 
-use diesel::sqlite::SqliteConnection;
 use diesel::prelude::*;
+use diesel::sqlite::SqliteConnection;
 
 pub fn create_session<'a>(conn: &SqliteConnection, user: &'a User, token: &'a str) -> usize {
     use schema::sessions;
@@ -38,6 +39,5 @@ pub fn create_user<'a>(conn: &SqliteConnection, email: &'a str, name: &'a str) -
 }
 
 pub fn establish_connection(db: &str) -> SqliteConnection {
-    SqliteConnection::establish(db)
-        .expect(&format!("Error connecting to {}", db))
+    SqliteConnection::establish(db).expect(&format!("Error connecting to {}", db))
 }

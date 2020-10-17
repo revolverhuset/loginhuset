@@ -1,23 +1,23 @@
-use serde::Deserialize;
+use base64::encode;
+use cookie::Cookie;
+use diesel::prelude::*;
+use diesel::sqlite::SqliteConnection;
 use getopts::Options;
-use simplelog::{TermLogger};
+use lazy_static::lazy_static;
+use log::{error, info};
+use serde::Deserialize;
+use simplelog::TermLogger;
 use std::fs::File;
 use std::path::Path;
 use std::rc::Rc;
-use diesel::sqlite::SqliteConnection;
-use diesel::prelude::*;
-use cookie::Cookie;
-use log::{info, error};
-use base64::{encode};
-use lazy_static::lazy_static;
 
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Client, Body, Error, Request, Response, Server, Method, StatusCode};
+use hyper::{Body, Client, Error, Method, Request, Response, Server, StatusCode};
 use hyper_staticfile::Static;
 use hyper_tls::HttpsConnector;
 
-use loginhuset::*;
 use loginhuset::models::*;
+use loginhuset::*;
 
 lazy_static! {
     static ref TOKENS: std::sync::Mutex<std::collections::HashMap<String, User>> = {
@@ -34,7 +34,6 @@ struct Mailgun {
     html_template: String,
     text_template: String,
 }
-
 
 #[derive(Deserialize)]
 struct Config {
@@ -133,7 +132,7 @@ fn check_cookie(
     db_conn: &SqliteConnection,
 ) -> Option<(Session, User)> {
     use loginhuset::schema::sessions::dsl::*;
-    use schema::{users, sessions};
+    use schema::{sessions, users};
 
     cookie_header
         .and_then(|c| Cookie::parse(c).ok())
@@ -148,10 +147,7 @@ fn check_cookie(
         })
 }
 
-fn delete_session(
-    session: Option<(Session, User)>,
-    db_conn: &SqliteConnection,
-) {
+fn delete_session(session: Option<(Session, User)>, db_conn: &SqliteConnection) {
     use loginhuset::schema::sessions::dsl::*;
 
     if let Some((s, _)) = session {
@@ -163,7 +159,8 @@ fn delete_session(
 
 fn get_user(user_email: &str, db_conn: &SqliteConnection) -> Option<User> {
     use ::loginhuset::schema::users::dsl::*;
-    users.filter(email.like(user_email))
+    users
+        .filter(email.like(user_email))
         .first::<User>(&*db_conn)
         .optional()
         .expect("Failed to find users table")
@@ -175,10 +172,14 @@ fn mailgun_request(email: &str, config: &Mailgun, url: &str) -> hyper::Request<B
     Request::builder()
         .method(Method::POST)
         .uri("https://api.mailgun.net/v3/mg.revolverhuset.no/messages")
-        .header("authorization", format!("Basic {}", encode(format!("api:{}", config.api_key))))
+        .header(
+            "authorization",
+            format!("Basic {}", encode(format!("api:{}", config.api_key))),
+        )
         .header("content-type", content_type)
         .header("content-length", data.len() as u64)
-        .body(Body::from(data)).unwrap()
+        .body(Body::from(data))
+        .unwrap()
 }
 
 fn get_query_map(query_string: Option<&str>) -> Option<std::collections::HashMap<String, String>> {
@@ -187,8 +188,8 @@ fn get_query_map(query_string: Option<&str>) -> Option<std::collections::HashMap
 }
 
 fn rand_string() -> String {
-    use rand::Rng; 
     use rand::distributions::Alphanumeric;
+    use rand::Rng;
 
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
@@ -196,7 +197,12 @@ fn rand_string() -> String {
         .collect::<String>()
 }
 
-fn authenticate(body: Vec<u8>, origin: String, db_conn: &SqliteConnection, mailgun: &Mailgun) -> Result<(), anyhow::Error> {
+fn authenticate(
+    body: Vec<u8>,
+    origin: String,
+    db_conn: &SqliteConnection,
+    mailgun: &Mailgun,
+) -> Result<(), anyhow::Error> {
     #[derive(Deserialize)]
     struct LoginRequest {
         email: String,
@@ -211,8 +217,7 @@ fn authenticate(body: Vec<u8>, origin: String, db_conn: &SqliteConnection, mailg
         let token = rand_string();
         let url = format!(
             "https://revolverhuset.no/_authentication/validate?token={}&origin={}",
-            token,
-            origin
+            token, origin
         );
         let req = mailgun_request(&user.email, mailgun, &url);
 
@@ -229,88 +234,126 @@ fn authenticate(body: Vec<u8>, origin: String, db_conn: &SqliteConnection, mailg
             let res = client.request(req).await;
             match res {
                 Ok(_) => info!("Successfully sent email to {}", lr.email),
-                Err(e) => error!("Failed to send email to {}, got {}", lr.email, e)
+                Err(e) => error!("Failed to send email to {}, got {}", lr.email, e),
             }
         });
     }
     Ok(())
 }
 
-async fn route_request(req: Request<Body>, fsstatic: Static, db_connection: Rc<SqliteConnection>, config: Rc<Config>) -> Result<Response<Body>, anyhow::Error> {
-    info!("Request [{}] {} {}", req.method(), req.uri().path(), req.uri().query().unwrap_or("<>"));
+async fn route_request(
+    req: Request<Body>,
+    fsstatic: Static,
+    db_connection: Rc<SqliteConnection>,
+    config: Rc<Config>,
+) -> Result<Response<Body>, anyhow::Error> {
+    info!(
+        "Request [{}] {} {}",
+        req.method(),
+        req.uri().path(),
+        req.uri().query().unwrap_or("<>")
+    );
     let cookie_name = &config.cookie_name;
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/_authentication/check") => {
-            let cookies = check_cookie(&req.headers().get(hyper::header::COOKIE).map(|h| h.to_str().unwrap()), cookie_name, &*db_connection);
-            Ok(cookies
-               .map_or_else(
-                   || Response::builder()
-                       .status(401)
-                       .body(Body::empty())
-                       .unwrap(),
-                   |(_, user)| Response::builder()
-                       .status(200)
-                       .header("x-identity", user.name)
-                       .header("x-user", user.email)
-                       .body(Body::empty())
-                       .unwrap()))
+            let cookies = check_cookie(
+                &req.headers()
+                    .get(hyper::header::COOKIE)
+                    .map(|h| h.to_str().unwrap()),
+                cookie_name,
+                &*db_connection,
+            );
+            Ok(cookies.map_or_else(
+                || Response::builder().status(401).body(Body::empty()).unwrap(),
+                |(_, user)| {
+                    Response::builder()
+                        .status(200)
+                        .header("x-identity", user.name)
+                        .header("x-user", user.email)
+                        .body(Body::empty())
+                        .unwrap()
+                },
+            ))
         }
         (&Method::GET, "/_authentication/logout") => {
-            let cookies = check_cookie(&req.headers().get(hyper::header::COOKIE).map(|h| h.to_str().unwrap()), cookie_name, &*db_connection);
+            let cookies = check_cookie(
+                &req.headers()
+                    .get(hyper::header::COOKIE)
+                    .map(|h| h.to_str().unwrap()),
+                cookie_name,
+                &*db_connection,
+            );
             delete_session(cookies, &*db_connection);
-            Ok(Response::builder()
-               .status(200)
-               .body(Body::empty())
-               .unwrap())
+            Ok(Response::builder().status(200).body(Body::empty()).unwrap())
         }
         (&Method::GET, "/_authentication/validate") => {
             let args = get_query_map(req.uri().query()).unwrap_or(std::collections::HashMap::new());
-            let validation = args.get("token").and_then(|token| TOKENS.lock().unwrap().remove(token)).map(|user| {
-                info!("Validated {}, setting cookie.", user.email);
-                let cookie = rand_string();
-                create_session(&*db_connection, &user, &cookie);
-                cookie
-            });
+            let validation = args
+                .get("token")
+                .and_then(|token| TOKENS.lock().unwrap().remove(token))
+                .map(|user| {
+                    info!("Validated {}, setting cookie.", user.email);
+                    let cookie = rand_string();
+                    create_session(&*db_connection, &user, &cookie);
+                    cookie
+                });
 
             match validation {
                 Some(cookie) => Ok(Response::builder()
                     .status(307)
-                    .header("Set-Cookie", format!("{}={}; Path=/; Max-Age=31536000", cookie_name, cookie))
-                    .header("location", args.get("origin").as_ref().map(|x| &x[..]).unwrap_or("/").to_owned())
+                    .header(
+                        "Set-Cookie",
+                        format!("{}={}; Path=/; Max-Age=31536000", cookie_name, cookie),
+                    )
+                    .header(
+                        "location",
+                        args.get("origin")
+                            .as_ref()
+                            .map(|x| &x[..])
+                            .unwrap_or("/")
+                            .to_owned(),
+                    )
                     .body(Body::empty())
                     .unwrap()),
-                None => Ok(Response::builder()
-                    .status(400)
-                    .body(Body::empty())
-                    .unwrap())
+                None => Ok(Response::builder().status(400).body(Body::empty()).unwrap()),
             }
         }
         (&Method::POST, "/_authentication/authenticate") => {
             let origin = {
-                let args = get_query_map(req.uri().query()).unwrap_or(std::collections::HashMap::new());
-                args.get("origin").as_ref().map(|x| &x[..]).unwrap_or("/").to_owned()
+                let args =
+                    get_query_map(req.uri().query()).unwrap_or(std::collections::HashMap::new());
+                args.get("origin")
+                    .as_ref()
+                    .map(|x| &x[..])
+                    .unwrap_or("/")
+                    .to_owned()
             };
             let body_data = hyper::body::to_bytes(req.into_body()).await?;
 
-            let result = authenticate(body_data.to_vec(), origin, &*db_connection, &(&*config).mailgun);
+            let result = authenticate(
+                body_data.to_vec(),
+                origin,
+                &*db_connection,
+                &(&*config).mailgun,
+            );
             match result {
                 Ok(_) => Ok(Response::builder().status(200).body(Body::empty()).unwrap()),
-                Err(_) => Ok(Response::builder().status(400).body(Body::empty()).unwrap())
+                Err(_) => Ok(Response::builder().status(400).body(Body::empty()).unwrap()),
             }
         }
-        (&Method::GET, _) => {
-            fsstatic.clone().serve(req).await.map_err(Into::into)
-        }
+        (&Method::GET, _) => fsstatic.clone().serve(req).await.map_err(Into::into),
         _ => {
             let mut res = Response::new(Body::empty());
             *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
             Ok(res)
-        },
+        }
     }
 }
 
 async fn run(config: Rc<Config>) {
-    let addr = format!("127.0.0.1:{}", config.port.unwrap_or(3000)).parse().unwrap();
+    let addr = format!("127.0.0.1:{}", config.port.unwrap_or(3000))
+        .parse()
+        .unwrap();
 
     let db_conn = Rc::new(establish_connection(&*config.database));
     let fsstatic = hyper_staticfile::Static::new(&config.www_root);
@@ -319,7 +362,11 @@ async fn run(config: Rc<Config>) {
         let config = config.clone();
         let db_conn = db_conn.clone();
         let fsstatic = fsstatic.clone();
-        async move { Ok::<_, Error>(service_fn(move |req| route_request(req, fsstatic.clone(), db_conn.clone(), config.clone())))}
+        async move {
+            Ok::<_, Error>(service_fn(move |req| {
+                route_request(req, fsstatic.clone(), db_conn.clone(), config.clone())
+            }))
+        }
     });
 
     let server = Server::bind(&addr).executor(LocalExec).serve(make_service);
@@ -341,8 +388,9 @@ fn main() {
             .parse()
             .unwrap(),
         simplelog::Config::default(),
-        simplelog::TerminalMode::Stderr
-    ).unwrap();
+        simplelog::TerminalMode::Stderr,
+    )
+    .unwrap();
 
     let config = Rc::new(load_config(&matches.opt_str("c").unwrap()));
 
