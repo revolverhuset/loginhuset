@@ -60,52 +60,6 @@ where
     }
 }
 
-fn load_config(path: &str) -> Config {
-    let data = {
-        use std::io::Read;
-        let mut s = String::new();
-        let f = File::open(path);
-        if f.is_err() {
-            panic!("Failed to read config '{}'", path);
-        }
-        let mut f = f.unwrap();
-        f.read_to_string(&mut s).unwrap();
-        s
-    };
-    toml::from_str(&data[..]).unwrap()
-}
-
-fn print_usage(program: &str, opts: Options) {
-    let brief = format!("Usage: {} FILE [options]", program);
-    print!("{}", opts.usage(&brief));
-}
-
-fn args() -> getopts::Matches {
-    use std::env::args;
-
-    let args: Vec<String> = args().collect();
-    let program = args[0].clone();
-    let mut opts = Options::new();
-    opts.optflag("h", "help", "Print usage");
-    opts.optopt("l", "log-level", "Log level", "LEVEL");
-    opts.reqopt("c", "config", "Configuration file", "TOML");
-
-    let matches = match opts.parse(&args[1..]) {
-        Ok(m) => m,
-        Err(f) => {
-            print_usage(&program, opts);
-            panic!(f.to_string());
-        }
-    };
-
-    if matches.opt_present("h") {
-        print_usage(&program, opts);
-        std::process::exit(1)
-    }
-
-    matches
-}
-
 fn multipart(config: &Mailgun, email: &str, url: &str) -> (String, Vec<u8>) {
     let mut mp = multipart::MultiPart::new();
     mp.str_part("from", None, &config.from);
@@ -324,6 +278,52 @@ async fn run(config: Rc<Config>) {
     if let Err(e) = server.await {
         error!("server error: {}", e);
     }
+}
+
+fn load_config(path: &str) -> Config {
+    let data = {
+        use std::io::Read;
+        let mut s = String::new();
+        let f = File::open(path);
+        if f.is_err() {
+            panic!("Failed to read config '{}'", path);
+        }
+        let mut f = f.unwrap();
+        f.read_to_string(&mut s).unwrap();
+        s
+    };
+    toml::from_str(&data[..]).unwrap()
+}
+
+fn print_usage(program: &str, opts: Options) {
+    let brief = format!("Usage: {} FILE [options]", program);
+    print!("{}", opts.usage(&brief));
+}
+
+fn args() -> getopts::Matches {
+    use std::env::args;
+
+    let args: Vec<String> = args().collect();
+    let program = args[0].clone();
+    let mut opts = Options::new();
+    opts.optflag("h", "help", "Print usage");
+    opts.optopt("l", "log-level", "Log level", "LEVEL");
+    opts.reqopt("c", "config", "Configuration file", "TOML");
+
+    let matches = match opts.parse(&args[1..]) {
+        Ok(m) => m,
+        Err(f) => {
+            print_usage(&program, opts);
+            panic!(f.to_string());
+        }
+    };
+
+    if matches.opt_present("h") {
+        print_usage(&program, opts);
+        std::process::exit(1)
+    }
+
+    matches
 }
 
 fn main() {
