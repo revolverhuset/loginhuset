@@ -43,6 +43,8 @@ struct Config {
     port: Option<u16>,
     www_root: String,
     mailgun: Mailgun,
+    validation_path: String,
+    base_url: String,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -202,7 +204,7 @@ fn authenticate(
     body: Vec<u8>,
     origin: String,
     db_conn: &SqliteConnection,
-    mailgun: &Mailgun,
+    config: &Config,
 ) -> Result<(), anyhow::Error> {
     #[derive(Deserialize)]
     struct LoginRequest {
@@ -217,10 +219,10 @@ fn authenticate(
         info!("User: {} {}", user.email, user.name);
         let token = rand_string();
         let url = format!(
-            "https://revolverhuset.no/_authentication/validate?token={}&origin={}",
-            token, origin
+            "{}{}?token={}&origin={}",
+            config.base_url, config.validation_path, token, origin
         );
-        let req = mailgun_request(&user.email, mailgun, &url);
+        let req = mailgun_request(&user.email, &config.mailgun, &url);
 
         TOKENS.lock().unwrap().insert(token.clone(), user);
 
@@ -287,7 +289,7 @@ async fn route_request(
             delete_session(cookies, &*db_connection);
             Ok(Response::builder().status(200).body(Body::empty()).unwrap())
         }
-        (&Method::GET, "/_authentication/validate") => {
+        (&Method::GET, path) if path.eq(&config.validation_path) => {
             let args = get_query_map(req.uri().query()).unwrap_or(std::collections::HashMap::new());
             let validation = args
                 .get("token")
@@ -331,12 +333,7 @@ async fn route_request(
             };
             let body_data = hyper::body::to_bytes(req.into_body()).await?;
 
-            let result = authenticate(
-                body_data.to_vec(),
-                origin,
-                &*db_connection,
-                &(&*config).mailgun,
-            );
+            let result = authenticate(body_data.to_vec(), origin, &*db_connection, &*config);
             match result {
                 Ok(_) => Ok(Response::builder().status(200).body(Body::empty()).unwrap()),
                 Err(_) => Ok(Response::builder().status(400).body(Body::empty()).unwrap()),
