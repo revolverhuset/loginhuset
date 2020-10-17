@@ -38,6 +38,7 @@ struct Mailgun {
 
 #[derive(Deserialize)]
 struct Config {
+    cookie_name: String,
     database: String,
     port: Option<u16>,
     www_root: String,
@@ -128,6 +129,7 @@ fn multipart(config: &Mailgun, email: &str, url: &str) -> (String, Vec<u8>) {
 
 fn check_cookie(
     cookie_header: &Option<&str>,
+    cookie_name: &str,
     db_conn: &SqliteConnection,
 ) -> Option<(Session, User)> {
     use loginhuset::schema::sessions::dsl::*;
@@ -135,7 +137,7 @@ fn check_cookie(
 
     cookie_header
         .and_then(|c| Cookie::parse(c).ok())
-        .filter(|c| c.name().eq("revolverhuset"))
+        .filter(|c| c.name().eq(cookie_name))
         .and_then(|c| {
             sessions::table
                 .inner_join(users::table)
@@ -236,10 +238,10 @@ fn authenticate(body: Vec<u8>, origin: String, db_conn: &SqliteConnection, mailg
 
 async fn route_request(req: Request<Body>, fsstatic: Static, db_connection: Rc<SqliteConnection>, config: Rc<Config>) -> Result<Response<Body>, anyhow::Error> {
     info!("Request [{}] {} {}", req.method(), req.uri().path(), req.uri().query().unwrap_or("<>"));
-
+    let cookie_name = &config.cookie_name;
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/_authentication/check") => {
-            let cookies = check_cookie(&req.headers().get(hyper::header::COOKIE).map(|h| h.to_str().unwrap()), &*db_connection);
+            let cookies = check_cookie(&req.headers().get(hyper::header::COOKIE).map(|h| h.to_str().unwrap()), cookie_name, &*db_connection);
             Ok(cookies
                .map_or_else(
                    || Response::builder()
@@ -254,7 +256,7 @@ async fn route_request(req: Request<Body>, fsstatic: Static, db_connection: Rc<S
                        .unwrap()))
         }
         (&Method::GET, "/_authentication/logout") => {
-            let cookies = check_cookie(&req.headers().get(hyper::header::COOKIE).map(|h| h.to_str().unwrap()), &*db_connection);
+            let cookies = check_cookie(&req.headers().get(hyper::header::COOKIE).map(|h| h.to_str().unwrap()), cookie_name, &*db_connection);
             delete_session(cookies, &*db_connection);
             Ok(Response::builder()
                .status(200)
@@ -273,7 +275,7 @@ async fn route_request(req: Request<Body>, fsstatic: Static, db_connection: Rc<S
             match validation {
                 Some(cookie) => Ok(Response::builder()
                     .status(307)
-                    .header("Set-Cookie", format!("revolverhuset={}; Path=/; Max-Age=31536000", cookie))
+                    .header("Set-Cookie", format!("{}={}; Path=/; Max-Age=31536000", cookie_name, cookie))
                     .header("location", args.get("origin").as_ref().map(|x| &x[..]).unwrap_or("/").to_owned())
                     .body(Body::empty())
                     .unwrap()),
