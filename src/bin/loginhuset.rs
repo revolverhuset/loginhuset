@@ -28,6 +28,7 @@ lazy_static! {
 
 #[derive(Deserialize)]
 struct Mailgun {
+    url: String,
     api_key: String,
     from: String,
     subject: String,
@@ -171,7 +172,7 @@ fn mailgun_request(email: &str, config: &Mailgun, url: &str) -> hyper::Request<B
 
     Request::builder()
         .method(Method::POST)
-        .uri("https://api.mailgun.net/v3/mg.revolverhuset.no/messages")
+        .uri(&config.url)
         .header(
             "authorization",
             format!("Basic {}", encode(format!("api:{}", config.api_key))),
