@@ -1,6 +1,5 @@
 use base64::encode;
 use cookie::Cookie;
-use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 use getopts::Options;
 use lazy_static::lazy_static;
@@ -107,28 +106,13 @@ fn args() -> getopts::Matches {
     matches
 }
 
-fn render(template: &str, url: &str) -> String {
-    let data = {
-        use std::io::Read;
-        let mut s = String::new();
-        let f = File::open(template);
-        if f.is_err() {
-            panic!("Failed to load template '{}'", template);
-        }
-        let mut f = f.unwrap();
-        f.read_to_string(&mut s).unwrap();
-        s
-    };
-    data.replace("{{url}}", url)
-}
-
 fn multipart(config: &Mailgun, email: &str, url: &str) -> (String, Vec<u8>) {
     let mut mp = multipart::MultiPart::new();
     mp.str_part("from", None, &config.from);
     mp.str_part("to", None, email);
     mp.str_part("subject", None, &config.subject);
-    mp.str_part("text", None, &render(&config.text_template, url));
-    mp.str_part("html", None, &render(&config.html_template, url));
+    mp.str_part("text", None, &utils::render(&config.text_template, url));
+    mp.str_part("html", None, &utils::render(&config.html_template, url));
     (mp.to_content_type(), mp.to_raw())
 }
 
@@ -137,20 +121,10 @@ fn check_cookie(
     cookie_name: &str,
     db_conn: &SqliteConnection,
 ) -> Option<(Session, User)> {
-    use loginhuset::schema::sessions::dsl::*;
-    use schema::{sessions, users};
-
     cookie_header
         .and_then(|c| Cookie::parse(c).ok())
         .filter(|c| c.name().eq(cookie_name))
-        .and_then(|c| {
-            sessions::table
-                .inner_join(users::table)
-                .filter(token.eq(c.value()))
-                .first::<(Session, User)>(db_conn)
-                .optional()
-                .expect("Failed to load data from DB.")
-        })
+        .and_then(|c| get_user_for_session(c.value(), db_conn))
 }
 
 fn mailgun_request(email: &str, config: &Mailgun, url: &str) -> hyper::Request<Body> {
@@ -174,16 +148,6 @@ fn get_query_map(query_string: Option<&str>) -> Option<std::collections::HashMap
     query_string.map(|qs| parse(qs.as_bytes()).into_owned().collect())
 }
 
-fn rand_string() -> String {
-    use rand::distributions::Alphanumeric;
-    use rand::Rng;
-
-    rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(32)
-        .collect::<String>()
-}
-
 fn authenticate(
     body: Vec<u8>,
     origin: String,
@@ -201,7 +165,7 @@ fn authenticate(
     // However, not having a user is an OK result, to avoid leaking info.
     if let Some(user) = get_user(&lr.email, &*db_conn) {
         info!("User: {} {}", user.email, user.name);
-        let token = rand_string();
+        let token = utils::rand_string();
         let url = format!(
             "{}{}?token={}&origin={}",
             config.base_url, config.validation_path, token, origin
@@ -282,7 +246,7 @@ async fn route_request(
                 .and_then(|token| TOKENS.lock().unwrap().remove(token))
                 .map(|user| {
                     info!("Validated {}, setting cookie.", user.email);
-                    let cookie = rand_string();
+                    let cookie = utils::rand_string();
                     create_session(&*db_connection, &user, &cookie);
                     cookie
                 });

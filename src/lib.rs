@@ -7,6 +7,8 @@ use self::models::{NewSession, NewUser, Session, User};
 pub mod models;
 pub mod schema;
 
+pub mod utils;
+
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
@@ -57,4 +59,16 @@ pub fn delete_session(session: Session, db_conn: &SqliteConnection) {
     diesel::delete(sessions.filter(token.eq(session.token)))
         .execute(db_conn)
         .expect("DB error");
+}
+
+pub fn get_user_for_session(session: &str, db_conn: &SqliteConnection) -> Option<(Session, User)> {
+    use schema::sessions::dsl::*;
+    use schema::{sessions, users};
+
+    sessions::table
+        .inner_join(users::table)
+        .filter(token.eq(session))
+        .first::<(Session, User)>(db_conn)
+        .optional()
+        .expect("Failed to load data from DB.")
 }
