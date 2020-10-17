@@ -2,7 +2,7 @@ extern crate chrono;
 #[macro_use]
 extern crate diesel;
 
-use self::models::{NewSession, NewUser, User};
+use self::models::{NewSession, NewUser, Session, User};
 
 pub mod models;
 pub mod schema;
@@ -40,4 +40,21 @@ pub fn create_user<'a>(conn: &SqliteConnection, email: &'a str, name: &'a str) -
 
 pub fn establish_connection(db: &str) -> SqliteConnection {
     SqliteConnection::establish(db).expect(&format!("Error connecting to {}", db))
+}
+
+pub fn get_user(user_email: &str, db_conn: &SqliteConnection) -> Option<User> {
+    use schema::users::dsl::*;
+    users
+        .filter(email.like(user_email))
+        .first::<User>(&*db_conn)
+        .optional()
+        .expect("Failed to find users table")
+}
+
+pub fn delete_session(session: Session, db_conn: &SqliteConnection) {
+    use schema::sessions::dsl::*;
+
+    diesel::delete(sessions.filter(token.eq(session.token)))
+        .execute(db_conn)
+        .expect("DB error");
 }

@@ -153,25 +153,6 @@ fn check_cookie(
         })
 }
 
-fn delete_session(session: Option<(Session, User)>, db_conn: &SqliteConnection) {
-    use loginhuset::schema::sessions::dsl::*;
-
-    if let Some((s, _)) = session {
-        diesel::delete(sessions.filter(token.eq(s.token)))
-            .execute(db_conn)
-            .expect("DB error");
-    }
-}
-
-fn get_user(user_email: &str, db_conn: &SqliteConnection) -> Option<User> {
-    use ::loginhuset::schema::users::dsl::*;
-    users
-        .filter(email.like(user_email))
-        .first::<User>(&*db_conn)
-        .optional()
-        .expect("Failed to find users table")
-}
-
 fn mailgun_request(email: &str, config: &Mailgun, url: &str) -> hyper::Request<Body> {
     let (content_type, data) = multipart(&*config, email, url);
 
@@ -289,7 +270,9 @@ async fn route_request(
                 cookie_name,
                 &*db_connection,
             );
-            delete_session(cookies, &*db_connection);
+            if let Some((session, _)) = cookies {
+                delete_session(session, &*db_connection);
+            }
             Ok(Response::builder().status(200).body(Body::empty()).unwrap())
         }
         (&Method::GET, path) if path.eq(&config.validation_path) => {
