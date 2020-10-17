@@ -44,6 +44,9 @@ struct Config {
     www_root: String,
     mailgun: Mailgun,
     validation_path: String,
+    logout_path: String,
+    authenticated_path: String,
+    authenticate_path: String,
     base_url: String,
 }
 
@@ -258,7 +261,7 @@ async fn route_request(
     );
     let cookie_name = &config.cookie_name;
     match (req.method(), req.uri().path()) {
-        (&Method::GET, "/_authentication/check") => {
+        (&Method::GET, path) if path.eq(&config.authenticated_path) => {
             let cookies = check_cookie(
                 &req.headers()
                     .get(hyper::header::COOKIE)
@@ -278,7 +281,7 @@ async fn route_request(
                 },
             ))
         }
-        (&Method::GET, "/_authentication/logout") => {
+        (&Method::GET, path) if path.eq(&config.logout_path) => {
             let cookies = check_cookie(
                 &req.headers()
                     .get(hyper::header::COOKIE)
@@ -321,7 +324,7 @@ async fn route_request(
                 None => Ok(Response::builder().status(400).body(Body::empty()).unwrap()),
             }
         }
-        (&Method::POST, "/_authentication/authenticate") => {
+        (&Method::POST, path) if path.eq(&config.authenticate_path) => {
             let origin = {
                 let args =
                     get_query_map(req.uri().query()).unwrap_or(std::collections::HashMap::new());
