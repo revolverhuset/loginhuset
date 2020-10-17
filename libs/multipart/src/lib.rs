@@ -1,8 +1,12 @@
 extern crate rand;
-use rand::Rng;
+use rand::Rng; 
+use rand::distributions::Alphanumeric;
 
 fn rand_string() -> String {
-    rand::thread_rng().gen_ascii_chars().take(16).collect()
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(16)
+        .collect::<String>()
 }
 
 struct Part {

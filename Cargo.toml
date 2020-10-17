@@ -1,44 +1,35 @@
+
 [package]
 name = "loginhuset"
 version = "0.1.0"
 authors = ["michael <michael@f3k.org>"]
+edition = "2018"
 
 [dependencies]
-chrono = "0.4"
-dotenv = "0.9.0"
-futures = "0.1.14"
+dotenv = "0.15.0"
+chrono = "0.4.19"
 getopts = "0.2.15"
-hyper = "0.11.2"
-hyper-staticfile = "0.1.1"
-hyper-tls = "0.1.2"
-lazy_static = "0.2"
-log = "0.3"
-rand = "0.3"
-serde = "1.0"
-serde_derive = "1.0.0"
-serde_urlencoded = "0.5.0"
-simplelog = "0.4.2"
-tokio-core = "0.1"
-toml = "0.4"
-url = "1.5.1"
+simplelog = "0.8.0"
+log = "0.4.11"
+toml = "0.5.7"
+serde = {version="1.0.117", features = ["derive"]}
+serde_urlencoded = "0.7.0"
+tokio = {version="0.2", features = ["full"]}
+futures = "0.3.6"
+hyper = "0.13"
+hyper-staticfile = "0.5.3"
+hyper-tls = "0.4.3"
+cookie = "0.14.2"
+url = "2.1.1"
+anyhow = "1.0"
+rand = "0.7.3"
+base64 = "0.13.0"
+lazy_static = "1.4.0"
 
 [dependencies.diesel]
 default-features = false
 features = ["sqlite", "chrono"]
-version = "0.16"
-
-[dependencies.diesel_codegen]
-default-features = false
-features = ["sqlite", "dotenv"]
-version = "0.16"
+version = "1.4.4"
 
 [dependencies.multipart]
 path = "libs/multipart"
-
-[dependencies.rusqlite]
-version = "0.11.0"
-
-[build-dependencies.diesel]
-default-features = false
-features = ["sqlite", "chrono"]
-version = "0.16.0"

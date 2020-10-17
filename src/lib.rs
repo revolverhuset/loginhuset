@@ -1,6 +1,5 @@
 extern crate chrono;
 #[macro_use] extern crate diesel;
-#[macro_use] extern crate diesel_codegen;
 
 use self::models::{NewUser, NewSession, User};
 
@@ -18,7 +17,8 @@ pub fn create_session<'a>(conn: &SqliteConnection, user: &'a User, token: &'a st
         token: token,
     };
 
-    diesel::insert(&new_session).into(sessions::table)
+    diesel::insert_into(sessions::table)
+        .values(&new_session)
         .execute(conn)
         .expect("Error saving session")
 }
@@ -31,7 +31,8 @@ pub fn create_user<'a>(conn: &SqliteConnection, email: &'a str, name: &'a str) -
         name: name,
     };
 
-    diesel::insert(&new_user).into(users::table)
+    diesel::insert_into(users::table)
+        .values(&new_user)
         .execute(conn)
         .expect("Error saving new user")
 }
