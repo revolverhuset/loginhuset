@@ -161,14 +161,17 @@ async fn route_request(
         req.uri().query().unwrap_or("<>")
     );
 
-    let is_whitelisted = config.limit_except_request_method && match (
-        req.headers().get_all("x-limit-except"),
-        req.headers().get("x-request-method")
-    ) {
-        (limit_except, Some(request_method)) =>
-            limit_except.iter().position(|x| x == request_method).is_some(),
-        _ => false
-    };
+    let is_whitelisted = config.limit_except_request_method
+        && match (
+            req.headers().get_all("x-limit-except"),
+            req.headers().get("x-request-method"),
+        ) {
+            (limit_except, Some(request_method)) => limit_except
+                .iter()
+                .position(|x| x == request_method)
+                .is_some(),
+            _ => false,
+        };
 
     if is_whitelisted {
         return Ok(Response::builder().status(200).body(Body::empty()).unwrap());
