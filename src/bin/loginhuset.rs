@@ -166,10 +166,9 @@ async fn route_request(
             req.headers().get_all("x-limit-except"),
             req.headers().get("x-request-method"),
         ) {
-            (limit_except, Some(request_method)) => limit_except
-                .iter()
-                .position(|x| x == request_method)
-                .is_some(),
+            (limit_except, Some(request_method)) => {
+                limit_except.iter().any(|x| x == request_method)
+            }
             _ => false,
         };
 
