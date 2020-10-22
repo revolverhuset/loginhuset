@@ -47,6 +47,8 @@ struct Config {
     authenticated_path: String,
     authenticate_path: String,
     base_url: String,
+    #[serde(default)]
+    limit_except_request_method: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -158,6 +160,20 @@ async fn route_request(
         req.uri().path(),
         req.uri().query().unwrap_or("<>")
     );
+
+    let is_whitelisted = config.limit_except_request_method && match (
+        req.headers().get_all("x-limit-except"),
+        req.headers().get("x-request-method")
+    ) {
+        (limit_except, Some(request_method)) =>
+            limit_except.iter().position(|x| x == request_method).is_some(),
+        _ => false
+    };
+
+    if is_whitelisted {
+        return Ok(Response::builder().status(200).body(Body::empty()).unwrap());
+    }
+
     let cookie_name = &config.cookie_name;
     match (req.method(), req.uri().path()) {
         (&Method::GET, path) if path.eq(&config.authenticated_path) => {
@@ -328,7 +344,6 @@ fn args() -> getopts::Matches {
 
 fn main() {
     let matches = args();
-
     TermLogger::init(
         matches
             .opt_str("l")
